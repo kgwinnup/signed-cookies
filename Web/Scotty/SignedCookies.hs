@@ -1,4 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
+-- | Most of this code depends on OverloadedStrings.
+--
+-- This is a utility package for Scotty web framework which provides signed cookie functionality
 module Web.Scotty.SignedCookies ( getCookie
                                 , setCookie ) where
 
@@ -17,14 +20,17 @@ import Control.Monad.IO.Class
 data Cookie = Cookie Text Text deriving (Show)
 
 -- | extract the key from the cookie data type
+--
 cookieK :: Cookie -> Text
 cookieK (Cookie k _) = k
 
 -- | extract the value from the cookie data type
+--
 cookieV :: Cookie -> Text
 cookieV (Cookie _ v) = v
 
 -- | parser to extract a cookie
+--
 parseCookie' :: Parser (Cookie, Text)
 parseCookie' = do
   skipSpace
@@ -36,7 +42,8 @@ parseCookie' = do
   let cookie = Cookie (pack k) (pack v)
   return (cookie, pack h)
 
--- |parser to extract cookies ending with semo-colon and space
+-- | parser to extract cookies ending with semo-colon and space
+--
 parseCookie :: Parser (Cookie, Text)
 parseCookie = do
   cook <- parseCookie'
@@ -45,6 +52,7 @@ parseCookie = do
   return cook
 
 -- | primary parse to extract many cookies
+--
 parseCookies :: Parser [(Cookie, Text)]
 parseCookies = many1 $ parseCookie <|> parseCookie'
 
@@ -52,7 +60,7 @@ validateCookie :: Text -> (Cookie, Text) -> Bool
 validateCookie s (Cookie k v, h) = h == generateHash (encodeUtf8 s) (encodeUtf8 k <> encodeUtf8 v)
 
 -- | set a cooke
--- > >>> setCookie "secret" "userid" "10"
+-- > setCookie "secret" "userid" "10"
 setCookie :: Text -- ^ secret key to hash values with
           -> Text -- ^ key to store cookie value in
           -> Text -- ^ cookie value
@@ -62,7 +70,7 @@ setCookie s n v = do
   addHeader "Set-Cookie" $ n <> "=" <> v <> "|" <> hash
 
 -- | geta cookie value if it exists, return Nohting if key doesn't exist or hash value doesn't match
--- > >>> getCookie "secret" "userid"
+-- > getCookie "secret" "userid"
 getCookie :: Text -- ^ secret key to verify hashed values
           -> Text -- ^ key to retrieve
           -> ActionM (Maybe Text)

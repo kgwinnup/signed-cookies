@@ -3,19 +3,21 @@ version:             0.1.0.0
 synopsis:            Secure cookie implementation for Scotty web framework
 description:         Please see README.md
 homepage:            https://github.com/kgwinnup/signed-cookies
+bug-reports:         https://github.com/kgwinnup/signed-cookies/issues
 license:             BSD3
 license-file:        LICENSE
 author:              Kyle Gwinnup
 maintainer:          kpgwinnup@gmail.com
 copyright:           2017 Kyle Gwinnup
 category:            Web
+stability:           experimental
 build-type:          Simple
 extra-source-files:  README.md
-cabal-version:       >=1.10
+cabal-version:       >= 1.10
 
 library 
   exposed-modules:     Web.Scotty.SignedCookies
-  build-depends:       base
+  build-depends:       base >= 2 && < 5
                      , wai
                      , scotty
                      , SHA
@@ -29,7 +31,7 @@ executable signed-cookies-exe
   hs-source-dirs:      app
   main-is:             Main.hs
   ghc-options:         -threaded -rtsopts -with-rtsopts=-N
-  build-depends:       base
+  build-depends:       base >= 2 && < 5
                      , signed-cookies
                      , wai
                      , scotty
@@ -44,7 +46,7 @@ test-suite signed-cookies-test
   type:                exitcode-stdio-1.0
   hs-source-dirs:      test
   main-is:             Spec.hs
-  build-depends:       base
+  build-depends:       base >= 2 && < 5
   ghc-options:         -threaded -rtsopts -with-rtsopts=-N
   default-language:    Haskell2010
 
