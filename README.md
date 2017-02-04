@@ -1,3 +1,5 @@
+
+```
 {-# LANGUAGE OverloadedStrings #-}
 
 module Main where
@@ -30,4 +32,4 @@ main :: IO ()
 main = scotty 3000 $ do
   get "/" singleCookie
   get "/read" readCookies
-
+```
