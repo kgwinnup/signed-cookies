@@ -1,4 +1,10 @@
 
+# Signed Cookies for Scotty Web Framework
+
+The signed-cookies package exports two functions `setCookie` and `getCookie`. Besure to use the same signing key.
+
+## Example
+
 ```
 {-# LANGUAGE OverloadedStrings #-}
 
@@ -8,7 +14,7 @@ import Web.Scotty
 import Web.Scotty.Internal.Types (ActionError(Next))
 import Data.Text.Lazy (fromStrict, Text, pack, toStrict)
 
-import Web.Scotty.SecureCookies
+import Web.Scotty.SignedCookies
 
 singleCookie = do
   setCookie "secret" "key" "value"

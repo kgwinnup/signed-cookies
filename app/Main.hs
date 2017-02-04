@@ -6,7 +6,7 @@ import Web.Scotty
 import Web.Scotty.Internal.Types (ActionError(Next))
 import Data.Text.Lazy (fromStrict, Text, pack, toStrict)
 
-import Web.Scotty.SecureCookies
+import Web.Scotty.SignedCookies
 
 singleCookie = do
   setCookie "secret" "key" "value"

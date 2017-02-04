@@ -1,5 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
-module Web.Scotty.SecureCookies ( getCookie
+module Web.Scotty.SignedCookies ( getCookie
                                 , setCookie ) where
 
 import Web.Scotty
@@ -34,7 +34,7 @@ parseCookie' = do
   char '|'
   h <- many1 (letter <|> digit)
   let cookie = Cookie (pack k) (pack v)
-  return (cookie, (pack h))
+  return (cookie, pack h)
 
 -- |parser to extract cookies ending with semo-colon and space
 parseCookie :: Parser (Cookie, Text)
@@ -49,26 +49,35 @@ parseCookies :: Parser [(Cookie, Text)]
 parseCookies = many1 $ parseCookie <|> parseCookie'
 
 validateCookie :: Text -> (Cookie, Text) -> Bool
-validateCookie s ((Cookie k v), h) = h == generateHash (encodeUtf8 s) ( (encodeUtf8 k) <> (encodeUtf8 v) )
+validateCookie s (Cookie k v, h) = h == generateHash (encodeUtf8 s) (encodeUtf8 k <> encodeUtf8 v)
 
-setCookie :: Text -> Text -> Text -> ActionM ()
+-- | set a cooke
+-- > >>> setCookie "secret" "userid" "10"
+setCookie :: Text -- ^ secret key to hash values with
+          -> Text -- ^ key to store cookie value in
+          -> Text -- ^ cookie value
+          -> ActionM ()
 setCookie s n v = do
-  let hash = generateHash (encodeUtf8 s) ( (encodeUtf8 n) <> (encodeUtf8 v) )
+  let hash = generateHash (encodeUtf8 s) (encodeUtf8 n <> encodeUtf8 v)
   addHeader "Set-Cookie" $ n <> "=" <> v <> "|" <> hash
 
-getCookie :: Text -> Text -> ActionM (Maybe Text)
+-- | geta cookie value if it exists, return Nohting if key doesn't exist or hash value doesn't match
+-- > >>> getCookie "secret" "userid"
+getCookie :: Text -- ^ secret key to verify hashed values
+          -> Text -- ^ key to retrieve
+          -> ActionM (Maybe Text)
 getCookie secret key = do
   -- get headers as Maybe Text
   h <- header "Cookie"
   -- parse Text of maybe with attoparsec
   case fmap (parseOnly parseCookies . toStrict) h of
     Just a -> case a of
-                Right cookies -> if length fcook == 0
+                Right cookies -> if null fcook
                                  then return Nothing
                                  else return $ if validateCookie secret (head fcook)
                                                then Just $ cookieV (fst (head fcook))
                                                else Nothing
-                                 where fcook = filter (\((Cookie k _), _) -> k == key) cookies
+                                 where fcook = filter (\(Cookie k _, _) -> k == key) cookies
                 _ -> return Nothing
     _ -> return Nothing
 
