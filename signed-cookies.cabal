@@ -19,6 +19,7 @@ library
   exposed-modules:     Web.Scotty.SignedCookies
   build-depends:       base >= 2 && < 5
                      , wai
+                     , time
                      , scotty
                      , SHA
                      , text

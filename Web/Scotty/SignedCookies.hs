@@ -3,6 +3,7 @@
 --
 -- This is a utility package for Scotty web framework which provides signed cookie functionality
 module Web.Scotty.SignedCookies ( getCookie
+                                , clearCookie
                                 , setCookie ) where
 
 import Web.Scotty
@@ -16,6 +17,8 @@ import Data.Attoparsec.Text
 import Data.Attoparsec.Combinator (manyTill, lookAhead)
 import Control.Applicative
 import Control.Monad.IO.Class
+import Data.Time (getCurrentTime)
+import Data.Time.Format (formatTime, defaultTimeLocale)
 
 data Cookie = Cookie Text Text deriving (Show)
 
@@ -69,6 +72,12 @@ setCookie s n v = do
   let hash = generateHash (encodeUtf8 s) (encodeUtf8 n <> encodeUtf8 v)
   addHeader "Set-Cookie" $ n <> "=" <> v <> "|" <> hash
 
+clearCookie :: Text -> ActionM ()
+clearCookie k = do
+  cur <- liftIO $ getCurrentTime 
+  let formatted = pack $ formatTime defaultTimeLocale "%a, %d-%b-%Y %X GMT" cur
+  addHeader "Set-Cookie" $ k <> "=; Expires=" <> formatted
+
 -- | geta cookie value if it exists, return Nohting if key doesn't exist or hash value doesn't match
 -- > getCookie "secret" "userid"
 getCookie :: Text -- ^ secret key to verify hashed values
@@ -91,4 +100,5 @@ getCookie secret key = do
 
 generateHash :: ByteString -> ByteString -> Text
 generateHash k m = pack . showDigest $ hmacSha256 k m
+
 
