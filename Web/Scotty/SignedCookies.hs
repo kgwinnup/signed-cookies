@@ -2,39 +2,30 @@
 -- | Most of this code depends on OverloadedStrings.
 --
 -- This is a utility package for Scotty web framework which provides signed cookie functionality
-module Web.Scotty.SignedCookies ( getCookie
-                                , clearCookie
-                                , setCookie ) where
+module Web.Scotty.SignedCookies ( setSignedCookie
+                                , getSignedCookie
+                                ) where
 
-import Web.Scotty
-import Web.Scotty.Internal.Types (ActionError(Next))
-import Data.Digest.Pure.SHA
-import Data.ByteString.Lazy (ByteString)
-import Data.Text.Lazy.Encoding (decodeUtf8, encodeUtf8)
-import Data.Text.Lazy (fromStrict, Text, pack, toStrict)
-import Data.Monoid ((<>))
-import Data.Attoparsec.Text
-import Data.Attoparsec.Combinator (manyTill, lookAhead)
-import Control.Applicative
 import Control.Monad.IO.Class
-import Data.Time (getCurrentTime)
-import Data.Time.Format (formatTime, defaultTimeLocale)
-
-data Cookie = Cookie Text Text deriving (Show)
-
--- | extract the key from the cookie data type
---
-cookieK :: Cookie -> Text
-cookieK (Cookie k _) = k
-
--- | extract the value from the cookie data type
---
-cookieV :: Cookie -> Text
-cookieV (Cookie _ v) = v
+import Data.Binary.Builder (Builder, toLazyByteString)
+import Data.Digest.Pure.SHA
+import Data.Monoid ((<>))
+import Data.Text
+import Data.Text.Encoding as E
+import qualified Data.Text.Lazy as LT
+import qualified Data.Text.Lazy.Encoding as LTE
+import qualified Data.ByteString.Lazy as LBS
+import qualified Data.ByteString.Char8 as S
+import Blaze.ByteString.Builder (toLazyByteString)
+import Web.Cookie
+import Web.Scotty
+import Web.Scotty.Internal.Types (ActionError (Next))
+import Data.Attoparsec.Text
+import Control.Applicative
 
 -- | parser to extract a cookie
---
-parseCookie' :: Parser (Cookie, Text)
+-- --
+parseCookie' :: Parser (SetCookie, Text)
 parseCookie' = do
   skipSpace
   k <- many1 (letter <|> digit)
@@ -42,12 +33,13 @@ parseCookie' = do
   v <- many1 (letter <|> digit)
   char '|'
   h <- many1 (letter <|> digit)
-  let cookie = Cookie (pack k) (pack v)
+  let cookie = def { setCookieName = S.pack k 
+                   , setCookieValue = S.pack v }
   return (cookie, pack h)
-
+  
 -- | parser to extract cookies ending with semo-colon and space
 --
-parseCookie :: Parser (Cookie, Text)
+parseCookie :: Parser (SetCookie, Text)
 parseCookie = do
   cook <- parseCookie'
   char ';'
@@ -56,49 +48,61 @@ parseCookie = do
 
 -- | primary parse to extract many cookies
 --
-parseCookies :: Parser [(Cookie, Text)]
-parseCookies = many1 $ parseCookie <|> parseCookie'
+getCookies :: Parser [(SetCookie, Text)]
+getCookies = many1 $ parseCookie <|> parseCookie'
 
-validateCookie :: Text -> (Cookie, Text) -> Bool
-validateCookie s (Cookie k v, h) = h == generateHash (encodeUtf8 s) (encodeUtf8 k <> encodeUtf8 v)
+setSignedCookie :: Text -- ^ secret
+                -> SetCookie -- ^ cookie
+                -> ActionM ()
+setSignedCookie secret cookie = do
+  let cv = LBS.fromStrict $ setCookieName cookie <> setCookieValue cookie
+      bs = (LTE.encodeUtf8 . LT.fromStrict) secret
+      hash = S.pack $ generateHash bs cv
+      newCookie = def { setCookieName = setCookieName cookie
+                      , setCookieValue = setCookieValue cookie <> "|" <> hash
+                      , setCookiePath = setCookiePath cookie
+                      , setCookieExpires = setCookieExpires cookie
+                      , setCookieMaxAge = setCookieMaxAge cookie
+                      , setCookieDomain = setCookieDomain cookie
+                      , setCookieHttpOnly = setCookieHttpOnly cookie
+                      , setCookieSecure = setCookieSecure cookie
+                      , setCookieSameSite = setCookieSameSite cookie }
+  addHeader "Set-Cookie" $ (LTE.decodeUtf8 . toLazyByteString . renderSetCookie) newCookie
 
--- | set a cooke
--- > setCookie "secret" "userid" "10"
-setCookie :: Text -- ^ secret key to hash values with
-          -> Text -- ^ key to store cookie value in
-          -> Text -- ^ cookie value
-          -> ActionM ()
-setCookie s n v = do
-  let hash = generateHash (encodeUtf8 s) (encodeUtf8 n <> encodeUtf8 v)
-  addHeader "Set-Cookie" $ n <> "=" <> v <> "|" <> hash
-
-clearCookie :: Text -> ActionM ()
-clearCookie k = do
-  cur <- liftIO $ getCurrentTime 
-  let formatted = pack $ formatTime defaultTimeLocale "%a, %d-%b-%Y %X GMT" cur
-  addHeader "Set-Cookie" $ k <> "=; Expires=" <> formatted
 
 -- | geta cookie value if it exists, return Nohting if key doesn't exist or hash value doesn't match
--- > getCookie "secret" "userid"
-getCookie :: Text -- ^ secret key to verify hashed values
-          -> Text -- ^ key to retrieve
-          -> ActionM (Maybe Text)
-getCookie secret key = do
+-- > getSignedCookie "secret" "userid"
+getSignedCookie :: Text -- ^ secret key to verify hashed values
+                -> Text -- ^ key to retrieve
+                -> ActionM (Maybe Text)
+getSignedCookie secret key = do
   -- get headers as Maybe Text
   h <- header "Cookie"
   -- parse Text of maybe with attoparsec
-  case fmap (parseOnly parseCookies . toStrict) h of
+  let maybeCookies = fmap (parseOnly getCookies . LT.toStrict) h 
+  case maybeCookies of
     Just a -> case a of
-                Right cookies -> if null fcook
+                Right cookies -> if Prelude.null filteredCookies
                                  then return Nothing
-                                 else return $ if validateCookie secret (head fcook)
-                                               then Just $ cookieV (fst (head fcook))
-                                               else Nothing
-                                 where fcook = filter (\(Cookie k _, _) -> k == key) cookies
-                _ -> return Nothing
-    _ -> return Nothing
+                                 else return response
+                                 where filteredCookies = Prelude.filter (\(c, _) -> E.decodeUtf8 (setCookieName c) == key) cookies 
+                                       filteredAndVerified = Prelude.filter (\tup -> validateCookie secret tup) filteredCookies 
+                                       response = if Prelude.null filteredAndVerified 
+                                                  then Nothing 
+                                                  else Just $ (E.decodeUtf8 . setCookieValue) $ fst (Prelude.head filteredAndVerified)
+                _             -> return Nothing
+    _      -> return Nothing
 
-generateHash :: ByteString -> ByteString -> Text
-generateHash k m = pack . showDigest $ hmacSha256 k m
+validateCookie :: Text -- ^ secret
+               -> (SetCookie, Text) -- ^ cookie and hashed parsed from request headers
+               -> Bool
+validateCookie s (c, h) = do
+  let bs = (LTE.encodeUtf8 . LT.fromStrict) s
+  h == (pack $ generateHash bs (LBS.fromStrict (setCookieName c <> setCookieValue c)))
+
+generateHash :: LBS.ByteString -- ^ secret
+             -> LBS.ByteString -- ^ concat [cookeName, cookieValue]
+             -> String 
+generateHash secret cookie = showDigest $ hmacSha256 secret cookie
 
 

@@ -24,8 +24,11 @@ library
                      , SHA
                      , text
                      , base64-bytestring
+                     , blaze-builder
                      , bytestring
                      , attoparsec
+                     , cookie
+                     , binary
   default-language:    Haskell2010
 
 executable signed-cookies-exe
@@ -35,7 +38,9 @@ executable signed-cookies-exe
   build-depends:       base >= 2 && < 5
                      , signed-cookies
                      , wai
+                     , cookie
                      , scotty
+                     , time
                      , SHA
                      , text
                      , base64-bytestring

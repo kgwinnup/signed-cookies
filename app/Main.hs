@@ -5,27 +5,23 @@ module Main where
 import Web.Scotty
 import Web.Scotty.Internal.Types (ActionError(Next))
 import Data.Text.Lazy (fromStrict, Text, pack, toStrict)
-
+import Control.Monad.IO.Class (liftIO)
 import Web.Scotty.SignedCookies
+import Web.Cookie
+import Data.Time.Clock.POSIX (getCurrentTime)
 
 singleCookie = do
-  setCookie "secret" "key" "value"
-  setCookie "secret" "key2" "value2"
+  cur <- liftIO $ getCurrentTime
+  setSignedCookie "secret" $ def { setCookieName = "id"
+                                 , setCookieValue = "valuehere" }
   text "single cookie"
 
 readCookies = do
-  cs <- header "Cookie"
-  h <- getCookie "secret" "key"
+  h <- getSignedCookie "secret" "id"
   text $ pack . show $ h
-
-delCookies = do
-  clearCookie "key"
-  clearCookie "key2"
-  text "cleaned cookies"
 
 main :: IO ()
 main = scotty 3000 $ do
   get "/" singleCookie
   get "/read" readCookies
-  get "/del" delCookies
 
