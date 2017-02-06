@@ -4,13 +4,14 @@
 -- This is a utility package for Scotty web framework which provides signed cookie functionality
 module Web.Scotty.SignedCookies ( setSignedCookie
                                 , getSignedCookie
+                                , deleteCookie
                                 ) where
 
 import Control.Monad.IO.Class
 import Data.Binary.Builder (Builder, toLazyByteString)
 import Data.Digest.Pure.SHA
 import Data.Monoid ((<>))
-import Data.Text
+import Data.Text (Text, pack)
 import Data.Text.Encoding as E
 import qualified Data.Text.Lazy as LT
 import qualified Data.Text.Lazy.Encoding as LTE
@@ -22,6 +23,7 @@ import Web.Scotty
 import Web.Scotty.Internal.Types (ActionError (Next))
 import Data.Attoparsec.Text
 import Control.Applicative
+import Data.Time.Clock.POSIX (posixSecondsToUTCTime)
 
 -- | parser to extract a cookie
 -- --
@@ -69,6 +71,7 @@ setSignedCookie secret cookie = do
                       , setCookieSameSite = setCookieSameSite cookie }
   addHeader "Set-Cookie" $ (LTE.decodeUtf8 . toLazyByteString . renderSetCookie) newCookie
 
+setCookieToText = LTE.decodeUtf8 . toLazyByteString . renderSetCookie
 
 -- | geta cookie value if it exists, return Nohting if key doesn't exist or hash value doesn't match
 -- > getSignedCookie "secret" "userid"
@@ -82,23 +85,31 @@ getSignedCookie secret key = do
   let maybeCookies = fmap (parseOnly getCookies . LT.toStrict) h 
   case maybeCookies of
     Just a -> case a of
-                Right cookies -> if Prelude.null filteredCookies
+                Right cookies -> if null filteredCookies
                                  then return Nothing
                                  else return response
-                                 where filteredCookies = Prelude.filter (\(c, _) -> E.decodeUtf8 (setCookieName c) == key) cookies 
-                                       filteredAndVerified = Prelude.filter (\tup -> validateCookie secret tup) filteredCookies 
-                                       response = if Prelude.null filteredAndVerified 
+                                 where filteredCookies = filter (\(c, _) -> E.decodeUtf8 (setCookieName c) == key) cookies 
+                                       filteredAndVerified = filter (validateCookie secret) filteredCookies 
+                                       response = if null filteredAndVerified 
                                                   then Nothing 
-                                                  else Just $ (E.decodeUtf8 . setCookieValue) $ fst (Prelude.head filteredAndVerified)
+                                                  else Just $ (E.decodeUtf8 . setCookieValue) $ fst (head filteredAndVerified)
                 _             -> return Nothing
     _      -> return Nothing
+
+deleteCookie :: Text -- ^ key to remove
+             -> ActionM ()
+deleteCookie key = do
+  let cookie = def { setCookieName = E.encodeUtf8 key
+                   , setCookieValue = ""
+                   , setCookieExpires = Just (posixSecondsToUTCTime 1) }
+  addHeader "Set-Cookie" $ setCookieToText cookie
 
 validateCookie :: Text -- ^ secret
                -> (SetCookie, Text) -- ^ cookie and hashed parsed from request headers
                -> Bool
 validateCookie s (c, h) = do
   let bs = (LTE.encodeUtf8 . LT.fromStrict) s
-  h == (pack $ generateHash bs (LBS.fromStrict (setCookieName c <> setCookieValue c)))
+  h == pack (generateHash bs (LBS.fromStrict (setCookieName c <> setCookieValue c)))
 
 generateHash :: LBS.ByteString -- ^ secret
              -> LBS.ByteString -- ^ concat [cookeName, cookieValue]
