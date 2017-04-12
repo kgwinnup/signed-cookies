@@ -2,10 +2,9 @@
 -- | Most of this code depends on OverloadedStrings.
 --
 -- This is a utility package for Scotty web framework which provides signed cookie functionality
-module Web.Scotty.SignedCookies ( setSignedCookie
-                                , getSignedCookie
-                                , deleteCookie
-                                ) where
+module Web.Scotty.SignedCookies ( setSignedCookie 
+                                , getSignedCookie 
+                                , deleteCookie ) where
 
 import Control.Monad.IO.Class
 import Data.Binary.Builder (Builder, toLazyByteString)
@@ -25,33 +24,7 @@ import Data.Attoparsec.Text
 import Control.Applicative
 import Data.Time.Clock.POSIX (posixSecondsToUTCTime)
 
--- | parser to extract a cookie
--- --
-parseCookie' :: Parser (SetCookie, Text)
-parseCookie' = do
-  skipSpace
-  k <- many1 (letter <|> digit)
-  char '='
-  v <- many1 (letter <|> digit)
-  char '|'
-  h <- many1 (letter <|> digit)
-  let cookie = def { setCookieName = S.pack k 
-                   , setCookieValue = S.pack v }
-  return (cookie, pack h)
-  
--- | parser to extract cookies ending with semo-colon and space
---
-parseCookie :: Parser (SetCookie, Text)
-parseCookie = do
-  cook <- parseCookie'
-  char ';'
-  char ' '
-  return cook
-
--- | primary parse to extract many cookies
---
-getCookies :: Parser [(SetCookie, Text)]
-getCookies = many1 $ parseCookie <|> parseCookie'
+import Web.Scotty.SignedCookies.SignedCookiesInternal
 
 setSignedCookie :: Text -- ^ secret
                 -> SetCookie -- ^ cookie
@@ -103,17 +76,5 @@ deleteCookie key = do
                    , setCookieValue = ""
                    , setCookieExpires = Just (posixSecondsToUTCTime 1) }
   addHeader "Set-Cookie" $ setCookieToText cookie
-
-validateCookie :: Text -- ^ secret
-               -> (SetCookie, Text) -- ^ cookie and hashed parsed from request headers
-               -> Bool
-validateCookie s (c, h) = do
-  let bs = (LTE.encodeUtf8 . LT.fromStrict) s
-  h == pack (generateHash bs (LBS.fromStrict (setCookieName c <> setCookieValue c)))
-
-generateHash :: LBS.ByteString -- ^ secret
-             -> LBS.ByteString -- ^ concat [cookeName, cookieValue]
-             -> String 
-generateHash secret cookie = showDigest $ hmacSha256 secret cookie
 
 
